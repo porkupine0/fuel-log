@@ -232,6 +232,7 @@ details.more[open] summary{margin-bottom:10px}
 .srow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .srow .grow{flex:1;min-width:0;overflow-wrap:anywhere}
 .keystat{font-weight:700}
+.fld textarea.keyin{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.01em;min-height:0;word-break:break-all;resize:none;line-height:1.4}
 .keystat.ok{color:var(--good)} .keystat.bad{color:var(--warn)}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 .ok{color:var(--good)}
@@ -1254,12 +1255,28 @@ function keyPanel(){
       <ol class="steps"><li>Open <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> and sign in or create an account.</li>
       <li>Under Billing, add a payment method and a few dollars of credit. Setting a monthly spend limit is a good idea.</li>
       <li>Under API keys, create a key and copy it.</li><li>Paste it here and tap Save.</li></ol>`}
-    <label class="fld" for="apikey"><span>${k ? 'Replace your key' : 'Your API key'}</span><input id="apikey" data-key="1" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…"></label>
+    <label class="fld" for="apikey"><span>${k ? 'Replace your key' : 'Your API key'}</span><textarea id="apikey" class="keyin" data-key="1" rows="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…"></textarea></label>
+    <p class="note">Paste the whole key. It shows here so you can check it against your notes.</p>
     <div class="row2"><button type="button" class="primary sm" data-act="saveKey" id="saveKey">Save key</button><button type="button" class="btn sm" data-act="testKey" id="testKey"${k ? '' : ' disabled'}>Test it</button></div>
-    ${S.keyStatus ? `<p class="keystat ${S.keyStatus.startsWith('✓') ? 'ok' : 'bad'}" id="keyStatus">${esc(S.keyStatus)}</p>` : ''}
+    ${S.keyStatus ? `<p class="keystat ${/✓/.test(S.keyStatus) ? 'ok' : /didn’t|doesn’t|isn’t|first\./.test(S.keyStatus) ? 'bad' : ''}" id="keyStatus">${esc(S.keyStatus)}</p>` : ''}
     ${k ? `<button type="button" class="linkish" data-act="dropKey" id="dropKey">${S.confirmDrop === 'key' ? 'Tap again to remove the key' : 'Remove the key from this phone'}</button>` : ''}
     <p class="note">The key stays on this phone. It isn't in backups unless you choose to include it when moving to the Home Screen app.</p>
   </section>`;
+}
+// what gets pasted isn't always just the key: a label in front, a line break, spaces, invisible characters or look-alike dashes from Notes
+function cleanKey(raw){
+  const trimmed = String(raw || '').trim();
+  const s = trimmed.normalize('NFKC').replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-').replace(/[\s\p{Cf}]/gu, '');
+  const m = s.match(/sk-ant-[A-Za-z0-9_-]{20,}/i);
+  const key = m ? 'sk-ant-' + m[0].slice(7) : '';
+  return { key, seen: s, changed: !!key && key !== trimmed };
+}
+function testKey(prefix){
+  S.keyStatus = `${prefix}Checking it…`; render();
+  ask({ content: [{ type: 'text', text: 'Reply with {"ok": true}.' }], schema: PING_SCHEMA, effort: 'low' })
+    .then(() => { S.keyStatus = `${prefix}✓ Your key works. Photos will be read with Claude.`; processQueue(); })
+    .catch(e => { S.keyStatus = prefix + (e && e.kind === 'offline' ? 'No connection, so it can’t be checked yet. Tap Test it when you’re online.' : e && e.kind === 'auth' ? 'That key didn’t work. Compare it with your notes, then paste it again.' : errText(e && e.kind ? e : { kind: 'api' })); })
+    .finally(() => { if (S.tab === 'settings') render(); });
 }
 function macroSum(p, c, f){ return `Your macros add up to about ${fmt((+p || 0) * 4 + (+c || 0) * 4 + (+f || 0) * 9)} calories (4 per gram of protein and carbs, 9 per gram of fat).`; }
 const ACT = [['sedentary', 'Mostly sitting', 1.2], ['light', 'Light: 1–3 workouts a week', 1.375], ['moderate', 'Moderate: 3–5 a week', 1.55], ['very', 'Very active: 6–7 a week', 1.725], ['athlete', 'Hard training twice a day', 1.9]];
@@ -2004,19 +2021,14 @@ document.addEventListener('click', ev => {
 
     // settings
     case 'saveKey': {
-      const v = ($('#apikey') || {}).value || '';
-      const k = v.trim();
-      if (!/^sk-ant-[A-Za-z0-9_\-]{10,}$/.test(k)){ S.keyStatus = 'That doesn’t look like a Claude API key. It starts with sk-ant-.'; render(); break; }
-      S.apiKey = k; saveKV('secret', k); S.keyStatus = 'Key saved. Tap Test it to check it works.'; render(); processQueue(); break;
-    }
-    case 'testKey': {
-      S.keyStatus = 'Testing…'; render();
-      ask({ content: [{ type: 'text', text: 'Reply with {"ok": true}.' }], schema: PING_SCHEMA, effort: 'low' })
-        .then(() => { S.keyStatus = '✓ Your key works. Photos will be read with Claude.'; processQueue(); })
-        .catch(e => { S.keyStatus = errText(e && e.kind ? e : { kind: 'api' }); })
-        .finally(() => { if (S.tab === 'settings') render(); });
+      const inp = $('#apikey'), c = cleanKey(inp ? inp.value : '');
+      if (inp) inp.blur();
+      if (!c.key){ S.keyStatus = !c.seen ? 'Paste your key first.' : `That doesn’t look like a Claude API key. Keys start with sk-ant-, and what you pasted starts with “${c.seen.slice(0, 12)}” (${c.seen.length} characters).`; render(); break; }
+      S.apiKey = c.key; saveKV('secret', c.key);
+      testKey(c.changed ? 'Saved, leaving out the spaces or extra text around the key. ' : 'Saved. ');
       break;
     }
+    case 'testKey': testKey(''); break;
     case 'dropKey': if (S.confirmDrop !== 'key'){ S.confirmDrop = 'key'; render(); break; } S.confirmDrop = null; S.apiKey = ''; idbDel('kv', 'secret').catch(() => {}); S.keyStatus = 'Key removed from this phone.'; render(); break;
     case 'saveTargets': {
       const v = id => num(($(id) || {}).value);
