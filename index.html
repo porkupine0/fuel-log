@@ -1255,7 +1255,7 @@ function keyPanel(){
       <ol class="steps"><li>Open <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> and sign in or create an account.</li>
       <li>Under Billing, add a payment method and a few dollars of credit. Setting a monthly spend limit is a good idea.</li>
       <li>Under API keys, create a key and copy it.</li><li>Paste it here and tap Save.</li></ol>`}
-    <label class="fld" for="apikey"><span>${k ? 'Replace your key' : 'Your API key'}</span><textarea id="apikey" class="keyin" data-key="1" rows="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…"></textarea></label>
+    <label class="fld" for="apikey"><span>${k ? 'Replace your key' : 'Your API key'}</span><textarea id="apikey" class="keyin" data-key="1" rows="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste your key here"></textarea></label>
     <p class="note">Paste the whole key. It shows here so you can check it against your notes.</p>
     <div class="row2"><button type="button" class="primary sm" data-act="saveKey" id="saveKey">Save key</button><button type="button" class="btn sm" data-act="testKey" id="testKey"${k ? '' : ' disabled'}>Test it</button></div>
     ${S.keyStatus ? `<p class="keystat ${/✓/.test(S.keyStatus) ? 'ok' : /didn’t|doesn’t|isn’t|first\./.test(S.keyStatus) ? 'bad' : ''}" id="keyStatus">${esc(S.keyStatus)}</p>` : ''}
@@ -1263,19 +1263,21 @@ function keyPanel(){
     <p class="note">The key stays on this phone. It isn't in backups unless you choose to include it when moving to the Home Screen app.</p>
   </section>`;
 }
-// what gets pasted isn't always just the key: a label in front, a line break, spaces, invisible characters or look-alike dashes from Notes
+// what gets pasted isn't always just the key: spaces, line breaks, invisible characters or look-alike dashes from Notes,
+// sometimes a label or quotes around it. Those come out; there's no check on what a key looks like, Anthropic decides that.
 function cleanKey(raw){
   const trimmed = String(raw || '').trim();
-  const s = trimmed.normalize('NFKC').replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-').replace(/[\s\p{Cf}]/gu, '');
-  const m = s.match(/sk-ant-[A-Za-z0-9_-]{20,}/i);
-  const key = m ? 'sk-ant-' + m[0].slice(7) : '';
-  return { key, seen: s, changed: !!key && key !== trimmed };
+  let s = trimmed.normalize('NFKC').replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-').replace(/[\s\p{Cf}]/gu, '');
+  const at = s.toLowerCase().indexOf('sk-ant-');
+  if (at >= 0) s = 'sk-ant-' + s.slice(at + 7);
+  s = s.replace(/^["'“‘(\[]+|["'”’)\].,;:]+$/g, '');
+  return { key: s, changed: !!s && s !== trimmed };
 }
 function testKey(prefix){
   S.keyStatus = `${prefix}Checking it…`; render();
   ask({ content: [{ type: 'text', text: 'Reply with {"ok": true}.' }], schema: PING_SCHEMA, effort: 'low' })
     .then(() => { S.keyStatus = `${prefix}✓ Your key works. Photos will be read with Claude.`; processQueue(); })
-    .catch(e => { S.keyStatus = prefix + (e && e.kind === 'offline' ? 'No connection, so it can’t be checked yet. Tap Test it when you’re online.' : e && e.kind === 'auth' ? 'That key didn’t work. Compare it with your notes, then paste it again.' : errText(e && e.kind ? e : { kind: 'api' })); })
+    .catch(e => { S.keyStatus = prefix + (e && e.kind === 'offline' ? 'No connection, so it can’t be checked yet. Tap Test it when you’re online.' : e && e.kind === 'auth' ? 'Anthropic says this key isn’t valid. Compare it with your notes, then paste it again.' : errText(e && e.kind ? e : { kind: 'api' })); })
     .finally(() => { if (S.tab === 'settings') render(); });
 }
 function macroSum(p, c, f){ return `Your macros add up to about ${fmt((+p || 0) * 4 + (+c || 0) * 4 + (+f || 0) * 9)} calories (4 per gram of protein and carbs, 9 per gram of fat).`; }
@@ -1777,7 +1779,7 @@ function restoreText(text){
   if (o.foods && typeof o.foods === 'object'){ let n = 0; for (const [k, f] of Object.entries(o.foods)) if (!S.foods[k] && f && typeof f === 'object'){ S.foods[k] = f; n++; } if (n) saveKV('foods', S.foods); }
   if (o.settings && (o.settingsSaved || o.kind === 'fuel-log-backup') && !S.meta.settingsSaved){ S.settings = mergeSettings(o.settings); saveSettings(); }
   let key = false;
-  if (typeof o.apiKey === 'string' && o.apiKey.startsWith('sk-') && !S.apiKey){ S.apiKey = o.apiKey; saveKV('secret', S.apiKey); key = true; }
+  if (typeof o.apiKey === 'string' && o.apiKey.trim() && !S.apiKey){ S.apiKey = o.apiKey; saveKV('secret', S.apiKey); key = true; }
   S.meta.moveDone = true; saveMeta();
   toast(ne ? `Restored ${plural(ne, 'entry', 'entries')}${nd ? ` across ${plural(nd, 'new day')}` : ''}${key ? ', plus your API key' : ''}.` : key ? 'Added your API key. Your log was already here.' : 'Nothing new to add. This phone already has all of it.');
   render(); processQueue();
@@ -2023,9 +2025,9 @@ document.addEventListener('click', ev => {
     case 'saveKey': {
       const inp = $('#apikey'), c = cleanKey(inp ? inp.value : '');
       if (inp) inp.blur();
-      if (!c.key){ S.keyStatus = !c.seen ? 'Paste your key first.' : `That doesn’t look like a Claude API key. Keys start with sk-ant-, and what you pasted starts with “${c.seen.slice(0, 12)}” (${c.seen.length} characters).`; render(); break; }
+      if (!c.key){ S.keyStatus = 'Paste your key first.'; render(); break; }
       S.apiKey = c.key; saveKV('secret', c.key);
-      testKey(c.changed ? 'Saved, leaving out the spaces or extra text around the key. ' : 'Saved. ');
+      testKey(c.changed ? 'Saved, leaving out the spaces or extra characters around it. ' : 'Saved. ');
       break;
     }
     case 'testKey': testKey(''); break;
