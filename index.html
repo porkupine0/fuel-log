@@ -654,7 +654,7 @@ const typeOf = items => items.length && items.every(it => it.kind === 'water') ?
 async function readMeal({ blob, text, caption, signal }){
   const intro = blob ? 'Look at this photo of something the person is about to eat or drink. It may show several items.' : `The person describes what they ate or drank: "${String(text).slice(0, 800)}"`;
   const content = [...(blob ? await imageBlocks([blob]) : []), { type: 'text', text: `${intro}${caption ? `\nTheir caption for it: "${caption.slice(0, 300)}"` : ''}${foodHints()}
-List each separate food or drink as its own item (a dish made of several ingredients, like a sandwich or a salad, is one item). Estimate the amount actually served. Give a short title (at most 40 characters), a one-sentence description, how confident you are, and a short note naming the biggest uncertainty (such as hidden oil, butter, dressing or portion size), or an empty note. If there's no food or drink, return no items and say why in the note.` }];
+List each separate food or drink as its own item (a dish made of several ingredients, like a sandwich or a salad, is one item). Estimate the amount actually served. If they say how much of it they ate or drank (like half, or all but the crust), give the numbers for just that amount and say so in the portion. Give a short title (at most 40 characters), a one-sentence description, how confident you are, and a short note naming the biggest uncertainty (such as hidden oil, butter, dressing or portion size), or an empty note. If there's no food or drink, return no items and say why in the note.` }];
   return cleanMeal(await ask({ content, schema: MEAL_SCHEMA, effort: 'medium', signal }));
 }
 async function readLabel({ blob, caption, signal }){
@@ -694,7 +694,7 @@ function toJpeg(file, max = 1568){
 async function enqueue(q){ S.queue.push(q); try { await idbPut('queue', q.id, q); } catch (e){ failSave(); } }
 async function dequeue(id){ S.queue = S.queue.filter(q => q.id !== id); try { await idbDel('queue', id); } catch (e){} }
 function placeholder(date, q){
-  const e = { id: q.entryId, t: q.t, type: 'meal', meal: mealFor(new Date(q.t)), title: q.kind === 'text' ? String(q.text).slice(0, 40) : q.mode === 'label' ? 'Nutrition label' : 'Photo', desc: '', caption: q.caption || '', src: q.mode === 'label' ? 'label' : q.kind === 'text' ? 'text' : 'photo', status: 'pending', qid: q.id, items: [] };
+  const e = { id: q.entryId, t: q.t, type: 'meal', meal: q.meal || mealFor(new Date(q.t)), title: q.kind === 'text' ? String(q.text).slice(0, 40) : q.mode === 'label' ? 'Nutrition label' : 'Photo', desc: '', caption: q.caption || '', src: q.mode === 'label' ? 'label' : q.kind === 'text' ? 'text' : 'photo', status: 'pending', qid: q.id, items: [] };
   dayOf(date).entries.push(e); dayOf(date).entries.sort((a, b) => a.t - b.t); saveDay(date);
   return e;
 }
@@ -703,9 +703,9 @@ function entryTime(date){
   if (date === todayKey()) return now.getTime();
   const d = parseKey(date); d.setHours(now.getHours(), now.getMinutes(), 0, 0); return d.getTime();
 }
-async function queueRead({ kind, mode, blob, text, caption }){
-  const date = S.date, t = entryTime(date);
-  const q = { id: newId(), entryId: newId(), kind, mode, blob: blob || null, text: text || '', caption: caption || '', date, t, error: null };
+async function queueRead({ kind, mode, blob, text, caption, date, t, meal }){
+  date = date || S.date; t = t || entryTime(date);
+  const q = { id: newId(), entryId: newId(), kind, mode, blob: blob || null, text: text || '', caption: caption || '', date, t, meal: meal || '', error: null };
   placeholder(date, q);
   await enqueue(q);
   render();
@@ -1329,6 +1329,7 @@ function closeSheet(){
   if (readCtl){ try { readCtl.abort(); } catch (e){} readCtl = null; }
   stopTicker();
   if (S.sheet && S.sheet.photos) S.sheet.photos.forEach(p => URL.revokeObjectURL(p.url));
+  if (S.sheet && S.sheet.kind === 'photo') URL.revokeObjectURL(S.sheet.url);
   S.sheet = null; sheetEl.hidden = true; panelEl.innerHTML = '';
   document.body.classList.remove('locked');
   render();
@@ -1340,7 +1341,7 @@ function renderSheet(first){
   let sel = null; try { if (fid && a.setSelectionRange && typeof a.selectionStart === 'number') sel = [a.selectionStart, a.selectionEnd]; } catch (e){}
   const top = panelEl.scrollTop;
   panelEl.innerHTML = R.kind === 'reading' ? readingSheet(R) : R.kind === 'edit' ? editSheet(R) : R.kind === 'label' ? labelSheet(R) : R.kind === 'describe' ? describeSheet(R)
-    : R.kind === 'drinks' ? drinksSheet() : R.kind === 'waterOther' ? waterSheet(R) : R.kind === 'coach' ? coachSheet(R) : R.kind === 'failed' ? failedSheet(R) : '';
+    : R.kind === 'drinks' ? drinksSheet() : R.kind === 'waterOther' ? waterSheet(R) : R.kind === 'coach' ? coachSheet(R) : R.kind === 'failed' ? failedSheet(R) : R.kind === 'photo' ? photoSheet(R) : '';
   if (!first) panelEl.scrollTop = top;
   if (fid){ const el = document.getElementById(fid); if (el){ el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e){} } }
   else if (first){ const f = panelEl.querySelector('[data-autofocus]') || panelEl.querySelector('button, input, textarea, label[tabindex]'); if (f) f.focus({ preventScroll: true }); panelEl.scrollTop = 0; }
@@ -1415,10 +1416,10 @@ function refreshEdit(){
   const t = sumItems(d.items), tot = $('#ed-tot');
   if (tot) tot.innerHTML = `<b class="num">${fmt(t.kcal)} cal</b><span class="num">Protein ${fmt(t.protein)} g · Carbs ${fmt(t.carbs)} g · Fat ${fmt(t.fat)} g</span>`;
 }
-function openNewEdit(result, src, date, extra){
-  const t = entryTime(date);
+function openNewEdit(result, src, date, extra, when){
+  const t = (when && when.t) || entryTime(date);
   openSheet(Object.assign({ kind: 'edit', isNew: true, date, time: hhmm(t), keep: false, editing: -1, fix: '', busy: false, fixError: '',
-    draft: { title: result.title, desc: result.desc || '', caption: result.caption || '', items: result.items, meal: mealFor(new Date(t)), confidence: result.confidence, note: result.note || '', src, exact: !!result.exact } }, extra || {}));
+    draft: { title: result.title, desc: result.desc || '', caption: result.caption || '', items: result.items, meal: (when && when.meal) || mealFor(new Date(t)), confidence: result.confidence, note: result.note || '', src, exact: !!result.exact } }, extra || {}));
 }
 function openExistingEdit(id){
   const f = findEntry(id); if (!f) return;
@@ -1616,8 +1617,8 @@ Suggest 4 snacks that fit what's left and suit the time of day. Put foods this p
 // ===================================================================
 // reading a new photo or description (quick snap off, or labels)
 // ===================================================================
-async function readNow({ blob, text, caption, mode }){
-  const date = S.date;
+async function readNow({ blob, text, caption, mode, date, t, meal }){
+  date = date || S.date;
   const url = blob ? URL.createObjectURL(blob) : null;
   openSheet({ kind: 'reading', title: mode === 'label' ? 'Reading the label' : blob ? 'Reading your photo' : 'Reading your description', url, text, started: Date.now() });
   startTicker();
@@ -1627,13 +1628,13 @@ async function readNow({ blob, text, caption, mode }){
       const r = await readLabel({ blob, caption, signal: readCtl.signal });
       if (url) URL.revokeObjectURL(url);
       stopTicker(); readCtl = null;
-      openSheet({ kind: 'label', date, name: r.name, serving: r.serving, perContainer: r.perContainer, item: r.item, note: r.note, servings: 1, custom: '', meal: mealFor(new Date()), caption, deleted: true });
+      openSheet({ kind: 'label', date, t, name: r.name, serving: r.serving, perContainer: r.perContainer, item: r.item, note: r.note, servings: 1, custom: '', meal: meal || mealFor(new Date()), caption, deleted: true });
     } else {
       const r = await readMeal({ blob, text, caption, signal: readCtl.signal });
       if (url) URL.revokeObjectURL(url);
       stopTicker(); readCtl = null;
       if (!r.items.length){ openSheet({ kind: 'describe', mode: 'ai', text: text || caption || '', error: r.note || 'No food or drink found. Describe it instead?', meal: mealFor(new Date()), manual: {} }); return; }
-      openNewEdit({ ...r, caption }, blob ? 'photo' : 'text', date, { deleted: !!blob });
+      openNewEdit({ ...r, caption }, blob ? 'photo' : 'text', date, { deleted: !!blob }, { t, meal });
     }
   } catch (e){
     stopTicker(); readCtl = null;
@@ -1641,7 +1642,7 @@ async function readNow({ blob, text, caption, mode }){
     if (e && e.kind === 'cancel'){ closeSheet(); return; }
     if (e && retryable(e)){
       closeSheet();
-      await queueRead({ kind: blob ? 'photo' : 'text', mode: mode || 'meal', blob, text, caption });
+      await queueRead({ kind: blob ? 'photo' : 'text', mode: mode || 'meal', blob, text, caption, date, t, meal });
       toast(e.kind === 'offline' ? "No connection. It's saved and will be read when you're back online." : "Claude is busy. It's saved and will be read in a bit.");
       return;
     }
@@ -1661,6 +1662,36 @@ async function onPhoto(file, mode){
     return;
   }
   readNow({ blob, caption, mode });
+}
+// a photo you already took: say what it is and how much you ate before it's read
+const AMOUNTS = [['all', 'All of it', 'Ate all of it'], ['most', '¾', 'Ate about three quarters of it'], ['half', '½', 'Ate about half of it'], ['quarter', '¼', 'Ate about a quarter of it']];
+async function onLibPhoto(file){
+  if (!file) return;
+  let blob;
+  try { blob = await toJpeg(file); } catch (e){ toast("That photo couldn't be opened. Try another one."); return; }
+  const text = S.caption.trim(), date = S.date;
+  S.caption = ''; const ci = $('#caption'); if (ci){ ci.value = ''; if (document.activeElement === ci) ci.blur(); }
+  if (S.sheet) closeSheet();
+  openSheet({ kind: 'photo', blob, url: URL.createObjectURL(blob), text, amount: '', meal: mealFor(new Date()), time: hhmm(entryTime(date)), timeSet: false, date });
+}
+function photoSheet(R){
+  const later = !S.apiKey || navigator.onLine === false || S.settings.quick;
+  return `${head('Add this photo')}
+    <img class="preview" src="${R.url}" alt="The photo you picked">
+    <label class="fld" for="ph-text"><span>Describe it, or say how much you ate (optional)</span><textarea id="ph-text" data-bind="text" maxlength="300" placeholder="e.g. homemade lasagna, I had the corner piece and skipped the bread">${esc(R.text)}</textarea></label>
+    <div class="fld"><span>How much of it did you eat?</span><div class="chips" role="group" aria-label="How much of it did you eat">${AMOUNTS.map(([k, l]) => `<button type="button" class="chip" data-act="phAmount" data-v="${k}" aria-pressed="${R.amount === k}" id="pa-${k}">${l}</button>`).join('')}</div></div>
+    <div class="fld"><span>Which meal?</span><div class="chips" role="group" aria-label="Which meal">${MEALS.map(([k, l]) => `<button type="button" class="chip" data-act="phMeal" data-v="${k}" aria-pressed="${R.meal === k}" id="pm-${k}">${l}</button>`).join('')}</div></div>
+    <label class="fld" for="ph-time"><span>Time</span><input id="ph-time" type="time" data-bind="time" value="${esc(R.time)}"></label>
+    <button type="button" class="primary" data-act="phAdd" id="ph-add">${later ? `Add to ${esc(dayWord(R.date))}` : 'Read it'}</button>
+    <button type="button" class="linkish" data-act="phLabel" id="ph-label">It's a nutrition label</button>
+    <p class="note">The photo is deleted as soon as it's read.${navigator.onLine === false ? " You're offline, so it'll be read when you're back online." : ''}</p>`;
+}
+function photoCaption(R){ const a = AMOUNTS.find(x => x[0] === R.amount); return [a ? a[2] : '', (R.text || '').trim()].filter(Boolean).join('. ').slice(0, 300); }
+function photoTime(R){
+  const [hh, mm] = String(R.time || '').split(':').map(Number), d = parseKey(R.date);
+  if (isNaN(hh)) return entryTime(R.date);
+  d.setHours(hh, mm || 0, 0, 0);
+  return Math.min(d.getTime(), Date.now());
 }
 async function onCoachPhotos(files){
   const R = S.sheet; if (!R || R.kind !== 'coach') return;
@@ -1887,6 +1918,28 @@ document.addEventListener('click', ev => {
     case 'calOfferAdd': openCalendarFile(S.calOffer); S.calOffer = null; render(); break;
     case 'calOfferClose': S.calOffer = null; render(); break;
 
+    // a photo you already took
+    case 'phAmount': R.amount = R.amount === b.dataset.v ? '' : b.dataset.v; renderSheet(); break;
+    case 'phMeal': {
+      R.meal = b.dataset.v;
+      // a meal from earlier: move the time to that meal's usual time, unless the time was set by hand
+      if (!R.timeSet){
+        const usual = R.meal === 'snack' ? '' : st.remind.meals[R.meal], now = hhmm(entryTime(R.date));
+        R.time = usual && (R.date !== todayKey() || usual <= now) ? usual : now;
+      }
+      renderSheet(); break;
+    }
+    case 'phAdd': case 'phLabel': {
+      const label = act === 'phLabel', blob = R.blob, date = R.date, t = photoTime(R), meal = R.meal;
+      const caption = label ? (R.text || '').trim() : photoCaption(R);
+      closeSheet();
+      if (!S.apiKey || navigator.onLine === false || (st.quick && !label)){
+        queueRead({ kind: 'photo', mode: label ? 'label' : 'meal', blob, caption, date, t, meal });
+        toast(!S.apiKey ? 'Saved. Add your API key in Settings to read it.' : navigator.onLine === false ? "Saved. It'll be read when you're back online." : 'Added. Reading it now…');
+      } else readNow({ blob, caption, mode: label ? 'label' : 'meal', date, t, meal });
+      break;
+    }
+
     // the editor
     case 'stopRead': if (readCtl) readCtl.abort(); break;
     case 'close': closeSheet(); break;
@@ -1923,6 +1976,7 @@ document.addEventListener('click', ev => {
       const servings = num(R.custom) || R.servings || 1, it = { ...R.item, name: (R.name || R.item.name).trim().slice(0, 80) || 'Packaged food', mult: servings };
       const e = makeEntry(R.date, typeOf([it]), [it], { title: it.name.slice(0, 40), desc: R.serving ? `${R.serving} per serving` : '', caption: R.caption || '', src: 'label', exact: true, reviewed: true });
       if (e.type === 'meal') e.meal = R.meal;
+      if (R.t) e.t = R.t;
       closeSheet(); addEntry(R.date, e); break;
     }
 
@@ -2013,6 +2067,7 @@ document.addEventListener('input', ev => {
   if (t.dataset.rem){ const r = S.settings.remind, k = t.dataset.rem; if (['breakfast', 'lunch', 'dinner'].includes(k)) r.meals[k] = t.value; else r[k] = t.value; saveKV('settings', S.settings); return; }
   if (t.dataset.set && /^t-(protein|carbs|fat)$/.test(t.id)){ const m = $('#macroSum'); if (m) m.textContent = macroSum(num(($('#t-protein') || {}).value), num(($('#t-carbs') || {}).value), num(($('#t-fat') || {}).value)); return; }
   if (!R) return;
+  if (t.dataset.bind && R.kind === 'photo' && t.dataset.bind === 'time') R.timeSet = true;
   if (t.dataset.bind){ if (R.kind === 'edit' && ['title', 'caption'].includes(t.dataset.bind)) R.draft[t.dataset.bind] = t.type === 'checkbox' ? t.checked : t.value; else R[t.dataset.bind] = t.type === 'checkbox' ? t.checked : t.value;
     if (R.kind === 'label' && t.dataset.bind === 'custom'){ const n = num(t.value); if (n) { const it = { ...R.item, mult: n }, x = eff(it), tot = $('#lb-tot'); if (tot) tot.innerHTML = `<b class="num">${fmt(x.kcal)} cal</b><span class="num">Protein ${fmt(x.protein)} g · Carbs ${fmt(x.carbs)} g · Fat ${fmt(x.fat)} g</span>`; } }
     return; }
@@ -2035,6 +2090,7 @@ document.addEventListener('change', ev => {
     if (t.id === 'restorefile'){ files[0].text().then(restoreText, () => toast("Couldn't read that file.")); return; }
     if (t.id === 'coachcam' || t.id === 'coachlib'){ onCoachPhotos(files); return; }
     if (t.id === 'cam' && S.sheet && S.sheet.kind === 'coach'){ onCoachPhotos(files); return; }
+    if (t.id === 'lib'){ onLibPhoto(files[0]); return; }
     onPhoto(files[0], t.id === 'labelcam' ? 'label' : 'meal');
     return;
   }

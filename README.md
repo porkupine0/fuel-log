@@ -8,7 +8,7 @@ Snap a meal and get its calories, protein, carbs and fat. Log drinks and water, 
 
 - **Snap a meal.** Take a photo (several foods are fine) and Claude reads it: a short description and the calories, protein, carbs and fat for each item. With quick snap on, the photo goes straight into today's log and is read in the background; tap the entry later to check it. With quick snap off, you check every photo before it's added.
 - **Photos are deleted right away.** Each photo is shrunk on the phone, sent to Claude, and deleted as soon as the numbers come back. A photo taken with no connection waits on the phone until it's read. Photos never go into your Photos library.
-- **Captions.** Type a caption before you snap ("grilled, half portion") and it goes along with the photo.
+- **Captions.** Type a caption before you snap ("grilled, half portion") and it goes along with the photo. For a photo you already took, Fuel Log shows the photo first with a box to describe it or say how much you ate, quick buttons for all, ¾, ½ or ¼ of it, and the meal and time.
 - **Nutrition labels.** Snap a label for exact numbers, then pick how many servings you had.
 - **Describe it, or type the numbers.** Describe a meal in words, or enter exact numbers yourself.
 - **Drinks and water.** One-tap water sizes and common drinks. Coffee, tea, soda, juice, milk and energy drinks count toward your water by how much water is in them; alcohol doesn't. Alcohol is counted in US standard drinks. Caffeine has a daily total and a bedtime cutoff.
