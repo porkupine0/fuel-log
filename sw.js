@@ -1,8 +1,8 @@
 // Offline support for Fuel Log: keeps the app, its icons and the Claude library on the phone, so the log opens without internet.
 // Your log itself lives in the page's own storage on the phone, not here. Reads go straight to Claude and never pass through this file.
-const PREFIX = "fuellog-", SHELL = PREFIX + "shell-v1", FONTS = PREFIX + "fonts-v1";
+const PREFIX = "fuellog-", SHELL = PREFIX + "shell-v2", FONTS = PREFIX + "fonts-v1";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/apple-touch-icon-v1.png", "./icons/icon-192-v1.png", "./icons/favicon-32-v1.png",
-  "./vendor/anthropic-sdk-0.131.0.mjs", "./vendor/anthropic-sdk-LICENSE.txt"];
+  "./vendor/anthropic-sdk-0.131.0.js", "./vendor/anthropic-sdk-LICENSE.txt"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(FILES.map(u => new Request(u, { cache:"reload" })))).then(() => self.skipWaiting()));

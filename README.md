@@ -45,10 +45,10 @@ One page, no build step:
 
 - `index.html`: the whole app (HTML, CSS and JavaScript). The log is kept in IndexedDB on the phone.
 - `sw.js`: offline support. Keeps the app, its icons and the Claude library on the phone.
-- `vendor/anthropic-sdk-0.131.0.mjs`: the official Anthropic TypeScript SDK, bundled for the browser with esbuild (MIT license in `vendor/anthropic-sdk-LICENSE.txt`). Loaded only when a photo or description is read.
+- `vendor/anthropic-sdk-0.131.0.js`: the official Anthropic TypeScript SDK, bundled for the browser with esbuild (MIT license in `vendor/anthropic-sdk-LICENSE.txt`). Loaded only when a photo or description is read.
 - `manifest.webmanifest` and `icons/`: the Home Screen icon. Regenerate the icons with `node source/make-icons.js` (needs Playwright); bump the `-v1` in the file names, `index.html`, `manifest.webmanifest` and `sw.js` when they change.
 
-Changes to `sw.js` or the cached files should bump the cache name in `sw.js` (`fuellog-shell-v1`).
+Changes to `sw.js` or the cached files should bump the cache name in `sw.js` (`fuellog-shell-v2`).
 
 Deploy by pushing to `main` and `gh-pages`:
 
