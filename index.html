@@ -84,7 +84,13 @@ svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .daynav .d{flex:1;min-width:0;text-align:center;font:800 21px/1.1 var(--display);font-stretch:85%}
 .daynav .d small{display:block;font:500 13px/1.3 var(--body);color:var(--muted)}
 .navbtn{width:40px;height:40px;border-radius:50%;border:2px solid var(--ink);background:var(--card);color:var(--ink);font-size:20px;line-height:1;display:grid;place-items:center;padding:0;flex:none}
-.trainrow{display:flex;justify-content:center;margin-top:-6px}
+.workout{display:flex;align-items:center;gap:12px;background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;margin-top:-4px}
+.workout.on{border-color:var(--grain)}
+.workout input{width:24px;height:24px;accent-color:var(--grain);flex:none;margin:0}
+.workout .wo{display:flex;flex-direction:column;min-width:0}
+.workout b{font-weight:800}
+.workout .amt2{font-weight:700;color:var(--grain)}
+.workout .wo-s{font-size:13px;color:var(--muted)}
 .left{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:2px solid var(--ink);border-radius:12px;background:var(--card);overflow:hidden}
 .left div{padding:8px 4px 7px;text-align:center;min-width:0}
 .left div+div{border-left:1px solid var(--line)}
@@ -151,8 +157,6 @@ label.primary,label.btn,label.linkish{cursor:pointer}
 .chip .num{color:var(--muted);margin-left:5px}
 .chip[aria-pressed="true"] .num{color:inherit}
 .chip.repeat{border-color:var(--beet);background:var(--tint)}
-.chip.train{border-color:var(--grain)}
-.chip.train[aria-pressed="true"]{background:var(--grain);border-color:var(--grain);color:var(--card)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 
 /* log */
@@ -400,7 +404,7 @@ const DEFAULT_SETTINGS = {
   quick: true, countDrinks: true,
   caffeine: true, caffeineMax: 400, bedtime: '22:30', cutoffHours: 8,
   extras: false, fiber: 30, sugar: 50, sodium: 2300,
-  train: { on: false, days: [1, 3, 5], kcal: 300, carbs: 60 },
+  train: { on: true, days: [], kcal: 300, carbs: 60 }, trainV: 2, askPhoto: true,
   weekly: false, weekStart: 0,
   helper: { sex: 'male', age: 35, hUnit: 'ft', ft: 5, inch: 10, cm: 178, wUnit: 'lb', weight: 185, activity: 'moderate', goal: 'maintain' },
   remind: { meals: { breakfast: '08:00', lunch: '12:30', dinner: '18:30' }, mealOn: true, waterOn: true, waterFrom: '09:00', waterTo: '19:00', waterEvery: 2 },
@@ -455,6 +459,8 @@ function mergeSettings(s){
   o.helper = Object.assign(clone(DEFAULT_SETTINGS.helper), (s && s.helper) || {});
   o.remind = Object.assign(clone(DEFAULT_SETTINGS.remind), (s && s.remind) || {});
   o.remind.meals = Object.assign(clone(DEFAULT_SETTINGS.remind.meals), (s && s.remind && s.remind.meals) || {});
+  // the workout checkbox used to be off unless you set up training days; now it shows, with no days checked for you
+  if (!(s && s.trainV >= 2)){ if (!(s && s.train && s.train.on)){ o.train.on = true; o.train.days = []; } o.trainV = 2; }
   return o;
 }
 const dayOf = date => { let d = S.days.get(date); if (!d){ d = { date, entries: [] }; S.days.set(date, d); } return d; };
@@ -513,10 +519,18 @@ function dayTotals(date){
   t.logged = t.n > 0 || t.water > 0;
   return t;
 }
+const plannedTraining = date => !!(S.settings.train.on && S.settings.train.days.includes(parseKey(date).getDay()));
 function isTraining(date){
   const d = S.days.get(date);
   if (d && typeof d.train === 'boolean') return d.train;
-  return !!(S.settings.train.on && S.settings.train.days.includes(parseKey(date).getDay()));
+  return plannedTraining(date);
+}
+function workoutRow(date){
+  const st = S.settings, on = isTraining(date), planned = plannedTraining(date), isToday = date === todayKey();
+  const extra = `+${fmt(st.train.kcal)} cal${+st.train.carbs ? ` · +${fmt(st.train.carbs)} g carbs` : ''}`;
+  const sub = planned ? (on ? 'On your plan. Uncheck it if you skip your workout.' : 'Skipped, so the extra is off.')
+    : on ? 'Extra added for your workout.' : isToday ? 'Check it if you work out today.' : 'Check it if you worked out.';
+  return `<label class="workout${on ? ' on' : ''}" for="trainBox"><input type="checkbox" id="trainBox" data-train="1"${on ? ' checked' : ''}><span class="wo"><span><b>Workout day</b> <span class="amt2 num">${extra}</span></span><span class="wo-s">${sub}</span></span></label>`;
 }
 function targetsFor(date){
   const s = S.settings, t = { kcal: s.kcal, protein: s.protein, carbs: s.carbs, fat: s.fat };
@@ -865,7 +879,7 @@ function todayView(){
       <div class="d">${esc(dateLabel(date))}<small>${esc(longDate(date))}</small></div>
       <button type="button" class="navbtn" data-act="nextDay" id="nextDay" aria-label="Next day"${isToday ? ' disabled' : ''}>›</button>
     </section>
-    ${st.train.on ? `<div class="trainrow"><button type="button" class="chip train" data-act="train" id="trainChip" aria-pressed="${isTraining(date)}">${isTraining(date) ? `Training day · +${fmt(st.train.kcal)} cal` : 'Rest day · tap if you trained'}</button></div>` : ''}
+    ${st.train.on ? workoutRow(date) : ''}
     ${leftStrip(t, g)}
     ${st.weekly ? weekLine(date) : ''}
     ${actionsView()}
@@ -905,7 +919,7 @@ function weekLine(date){
 function actionsView(){
   const ready = !!S.apiKey;
   return `<section class="acts" aria-label="Add to your log">
-    <label class="captionbox" for="caption"><span class="vh">Caption for the next photo</span><input id="caption" data-cap="1" placeholder="Caption (optional): grilled, half portion…" value="${esc(S.caption)}" autocomplete="off" maxlength="200"></label>
+    ${S.settings.askPhoto ? '' : `<label class="captionbox" for="caption"><span class="vh">Caption for the next photo</span><input id="caption" data-cap="1" placeholder="Caption (optional): grilled, half portion…" value="${esc(S.caption)}" autocomplete="off" maxlength="200"></label>`}
     <label class="primary big" for="cam" id="snap" role="button" tabindex="0" data-file="cam">${ICON.cam} Snap a meal</label>
     <div class="row3">
       <label class="btn" for="labelcam" id="snapLabel" role="button" tabindex="0" data-file="labelcam">${ICON.label} Label</label>
@@ -1098,7 +1112,7 @@ function statsView(){
   const p = A.avg('protein') * 4, c = A.avg('carbs') * 4, f = A.avg('fat') * 9, tot = p + c + f || 1;
   const goalAvg = A.logged.reduce((a, d) => a + d.goal.kcal, 0) / A.logged.length;
   const sec = [];
-  sec.push(`<section class="card"><h2>Calories</h2>${chartSvg(kcalPts, goalAvg, { label: `Calories each day, with your target as a dashed line` })}<p class="note">Dashed line: your ${fmt(goalAvg)} calorie target${st.train.on ? ' (average, with training days)' : ''}.${A.partial ? ' Averages leave out today until it’s over.' : ''}</p>
+  sec.push(`<section class="card"><h2>Calories</h2>${chartSvg(kcalPts, goalAvg, { label: `Calories each day, with your target as a dashed line` })}<p class="note">Dashed line: your ${fmt(goalAvg)} calorie target${A.logged.some(d => isTraining(d.date)) ? ' (average, with workout days)' : ''}.${A.partial ? ' Averages leave out today until it’s over.' : ''}</p>
     <div class="stats">${stat(fmt(A.avg('kcal')), 'calories a day', delta(A.avg('kcal'), prev(P.avg('kcal')), '', null))}${stat(`${A.kcalOK} of ${A.basis.length}`, 'days within 10% of target')}${stat(`${A.logged.length} of ${A.n}`, 'days logged')}${stat(fmt(A.sum('kcal')), `calories this ${mode}`)}</div></section>`);
   sec.push(`<section class="card"><h2>Macros</h2>
     <div class="stats">${stat(`${fmt(A.avg('protein'))} g`, 'protein a day', delta(A.avg('protein'), prev(P.avg('protein')), ' g', 'up'))}${stat(`${A.protOK} of ${A.basis.length}`, 'days you hit protein')}${stat(`${fmt(A.avg('carbs'))} g`, 'carbs a day')}${stat(`${fmt(A.avg('fat'))} g`, 'fat a day')}</div>
@@ -1197,14 +1211,15 @@ function settingsView(){
     <button type="button" class="primary" data-act="saveTargets" id="saveTargets">Save targets</button>
     ${helperPanel()}
   </section>
-  <section class="card"><h2>Training days</h2>
-    ${sw('trainOn', st.train.on, 'More food on training days', 'Adds calories and carbs on the days you lift. Tap the chip on Today to switch any single day.', 'sw-train')}
-    ${st.train.on ? `<div class="chips" role="group" aria-label="Training days">${[[0, 'Sun'], [1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat']].map(([d, l]) => `<button type="button" class="chip" data-act="trainDay" data-v="${d}" id="td-${d}" aria-pressed="${st.train.days.includes(d)}">${l}</button>`).join('')}</div>
-      <div class="tgrid">${nfield('tr-kcal', 'Extra calories', st.train.kcal, 'cal')}${nfield('tr-carbs', 'Extra carbs', st.train.carbs, 'g')}</div>
-      <button type="button" class="btn" data-act="saveTrain" id="saveTrain">Save training days</button>` : ''}
+  <section class="card"><h2>Workout days</h2>
+    ${sw('trainOn', st.train.on, 'Workout checkbox on Today', 'Check it on a day you work out to eat a little more. On a planned workout day it’s checked for you; uncheck it if you skip.', 'sw-train')}
+    ${st.train.on ? `<div class="tgrid">${nfield('tr-kcal', 'Extra calories', st.train.kcal, 'cal')}${nfield('tr-carbs', 'Extra carbs', st.train.carbs, 'g')}</div>
+      <button type="button" class="btn" data-act="saveTrain" id="saveTrain">Save</button>
+      <div class="fld"><span>Your usual workout days (checked for you, optional)</span><div class="chips" role="group" aria-label="Usual workout days">${[[0, 'Sun'], [1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat']].map(([d, l]) => `<button type="button" class="chip" data-act="trainDay" data-v="${d}" id="td-${d}" aria-pressed="${st.train.days.includes(d)}">${l}</button>`).join('')}</div></div>` : ''}
   </section>
   <section class="card"><h2>Logging</h2>
     ${sw('quick', st.quick, 'Quick snap', 'Photos go straight into the log and get read in the background. Tap one later to check it. Off: you check every photo before it’s added.', 'sw-quick')}
+    ${sw('askPhoto', st.askPhoto, 'Ask about each photo', 'After you snap, add a note or say how much you ate before it’s read. Off: snapped photos go straight in, with a caption box above the camera button. Photos from your library always ask.', 'sw-ask')}
     ${sw('countDrinks', st.countDrinks, 'Count other drinks toward water', 'Coffee, tea, soda, juice, milk and energy drinks count by how much water is in them. Alcohol doesn’t count.', 'sw-drinks')}
     ${st.countDrinks ? `<details class="more"><summary>How each drink counts</summary><div class="tl">${DTYPES.filter(d => d[0] !== 'water').map(d => `<div><span>${d[1]}</span><b class="num">${Math.round(d[2] * 100)}%</b></div>`).join('')}</div><p class="note" style="margin-top:6px">Studies of how well drinks hydrate find coffee and tea, in normal amounts, about as good as water.</p></details>` : ''}
     ${sw('weekly', st.weekly, 'Weekly calorie budget', 'Shows the week’s calories on Today, so one big dinner averages out.', 'sw-weekly')}
@@ -1663,9 +1678,9 @@ async function onPhoto(file, mode){
   }
   readNow({ blob, caption, mode });
 }
-// a photo you already took: say what it is and how much you ate before it's read
+// a photo you snap or pick: say what it is and how much you ate before it's read
 const AMOUNTS = [['all', 'All of it', 'Ate all of it'], ['most', '¾', 'Ate about three quarters of it'], ['half', '½', 'Ate about half of it'], ['quarter', '¼', 'Ate about a quarter of it']];
-async function onLibPhoto(file){
+async function askAboutPhoto(file){
   if (!file) return;
   let blob;
   try { blob = await toJpeg(file); } catch (e){ toast("That photo couldn't be opened. Try another one."); return; }
@@ -1765,7 +1780,7 @@ function csvEntries(){
   return rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 function csvDays(){
-  const rows = [['Date', 'Calories', 'Calorie target', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Fiber (g)', 'Sugar (g)', 'Sodium (mg)', 'Caffeine (mg)', 'Water total (ml)', 'Plain water (ml)', 'From other drinks (ml)', 'Drinks', 'Alcoholic drinks', 'Standard drinks', 'Training day']];
+  const rows = [['Date', 'Calories', 'Calorie target', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Fiber (g)', 'Sugar (g)', 'Sodium (mg)', 'Caffeine (mg)', 'Water total (ml)', 'Plain water (ml)', 'From other drinks (ml)', 'Drinks', 'Alcoholic drinks', 'Standard drinks', 'Workout day']];
   for (const k of [...S.days.keys()].sort()){
     const t = dayTotals(k); if (!t.logged) continue;
     rows.push([k, Math.round(t.kcal), targetsFor(k).kcal, Math.round(t.protein), Math.round(t.carbs), Math.round(t.fat), Math.round(t.fiber), Math.round(t.sugar), Math.round(t.sodium), Math.round(t.caffeine), Math.round(t.water), Math.round(t.plain), Math.round(t.fromDrinks), Math.round(t.drinks * 10) / 10, Math.round(t.alc * 10) / 10, Math.round(t.std * 10) / 10, isTraining(k) ? 'yes' : 'no']);
@@ -1840,7 +1855,6 @@ document.addEventListener('click', ev => {
     case 'prevDay': S.date = shiftKey(S.date, -1); render(); break;
     case 'nextDay': if (S.date < todayKey()){ S.date = shiftKey(S.date, 1); render(); } break;
     case 'goToday': S.date = todayKey(); render(); window.scrollTo(0, 0); break;
-    case 'train': { const d = dayOf(S.date); d.train = !isTraining(S.date); saveDay(S.date); render(); break; }
     case 'water': addWater(+b.dataset.ml); break;
     case 'waterOther': openSheet({ kind: 'waterOther', amt: '', error: '' }); break;
     case 'addWaterOther': {
@@ -2022,8 +2036,9 @@ document.addEventListener('click', ev => {
     case 'hGoal': st.helper.goal = b.dataset.v; S.helperOpen = true; saveSettings(); render(); break;
     case 'trainOn': st.train.on = !st.train.on; saveSettings(); render(); break;
     case 'trainDay': { const d = +b.dataset.v; st.train.days = st.train.days.includes(d) ? st.train.days.filter(x => x !== d) : [...st.train.days, d].sort(); saveSettings(); render(); break; }
-    case 'saveTrain': st.train.kcal = Math.round(num(($('#tr-kcal') || {}).value)); st.train.carbs = Math.round(num(($('#tr-carbs') || {}).value)); saveSettings(); render(); toast('Training days saved'); break;
+    case 'saveTrain': st.train.kcal = Math.round(num(($('#tr-kcal') || {}).value)); st.train.carbs = Math.round(num(($('#tr-carbs') || {}).value)); saveSettings(); render(); toast('Workout extra saved'); break;
     case 'quick': st.quick = !st.quick; saveSettings(); render(); break;
+    case 'askPhoto': st.askPhoto = !st.askPhoto; saveSettings(); render(); break;
     case 'countDrinks': st.countDrinks = !st.countDrinks; saveSettings(); render(); break;
     case 'weekly': st.weekly = !st.weekly; saveSettings(); render(); break;
     case 'weekStart': st.weekStart = +b.dataset.v; saveSettings(); render(); break;
@@ -2090,13 +2105,14 @@ document.addEventListener('change', ev => {
     if (t.id === 'restorefile'){ files[0].text().then(restoreText, () => toast("Couldn't read that file.")); return; }
     if (t.id === 'coachcam' || t.id === 'coachlib'){ onCoachPhotos(files); return; }
     if (t.id === 'cam' && S.sheet && S.sheet.kind === 'coach'){ onCoachPhotos(files); return; }
-    if (t.id === 'lib'){ onLibPhoto(files[0]); return; }
+    if (t.id === 'lib' || (t.id === 'cam' && S.settings.askPhoto)){ askAboutPhoto(files[0]); return; }
     onPhoto(files[0], t.id === 'labelcam' ? 'label' : 'meal');
     return;
   }
   if (t.type === 'checkbox' && S.sheet && t.dataset.bind) S.sheet[t.dataset.bind] = t.checked;
   if (t.type === 'checkbox' && t.dataset.f === 'remember' && S.sheet && S.sheet.kind === 'edit'){ const it = S.sheet.draft.items[+t.dataset.i]; if (it) it.remember = t.checked; }
   if (t.dataset.inc) S.incKey = t.checked;
+  if (t.dataset.train){ const d = dayOf(S.date); if (t.checked === plannedTraining(S.date)) delete d.train; else d.train = t.checked; saveDay(S.date); render(); }
   if (t.dataset.help){ const h = S.settings.helper; h[t.dataset.help] = t.value; const o = $('#helperOut'); if (o) o.innerHTML = helperOut(helperCalc(h)); saveKV('settings', S.settings); }
   if (t.dataset.rem) render();
 });

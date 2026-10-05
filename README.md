@@ -8,7 +8,7 @@ Snap a meal and get its calories, protein, carbs and fat. Log drinks and water, 
 
 - **Snap a meal.** Take a photo (several foods are fine) and Claude reads it: a short description and the calories, protein, carbs and fat for each item. With quick snap on, the photo goes straight into today's log and is read in the background; tap the entry later to check it. With quick snap off, you check every photo before it's added.
 - **Photos are deleted right away.** Each photo is shrunk on the phone, sent to Claude, and deleted as soon as the numbers come back. A photo taken with no connection waits on the phone until it's read. Photos never go into your Photos library.
-- **Captions.** Type a caption before you snap ("grilled, half portion") and it goes along with the photo. For a photo you already took, Fuel Log shows the photo first with a box to describe it or say how much you ate, quick buttons for all, ¾, ½ or ¼ of it, and the meal and time.
+- **Say what it is and how much you ate.** After you snap or pick a photo, Fuel Log shows it with a box to describe it or say how much you ate, quick buttons for all, ¾, ½ or ¼ of it, and the meal and time. Claude counts only what you ate. (Turn off "Ask about each photo" in Settings and snapped photos go straight in, with a caption box above the camera button instead.)
 - **Nutrition labels.** Snap a label for exact numbers, then pick how many servings you had.
 - **Describe it, or type the numbers.** Describe a meal in words, or enter exact numbers yourself.
 - **Drinks and water.** One-tap water sizes and common drinks. Coffee, tea, soda, juice, milk and energy drinks count toward your water by how much water is in them; alcohol doesn't. Alcohol is counted in US standard drinks. Caffeine has a daily total and a bedtime cutoff.
@@ -17,7 +17,8 @@ Snap a meal and get its calories, protein, carbs and fat. Log drinks and water, 
 - **It learns your numbers.** Correct an item once and Fuel Log uses your numbers the next time that food shows up.
 - **Stats.** Daily, weekly and monthly calories, macros, water, alcohol and caffeine, compared with the period before.
 - **History.** Every day you've logged, and a search across everything you've eaten. All of it works offline.
-- **Targets.** Daily targets, a target helper (from age, height, weight, activity and goal), extra food on training days, an optional weekly calorie budget, and optional fiber, sugar and sodium.
+- **Targets.** Daily targets, a target helper (from age, height, weight, activity and goal), an optional weekly calorie budget, and optional fiber, sugar and sodium.
+- **Workout days.** A checkbox on Today adds extra calories and carbs on a day you work out. Set your usual workout days and it's checked for you; uncheck it on a day you skip.
 - **Reminders.** Meal and water reminders added to your phone's Calendar.
 - **Spreadsheets and backups.** Export every entry or daily totals as CSV. Save a backup file, or copy your log to the Home Screen app or another phone.
 
